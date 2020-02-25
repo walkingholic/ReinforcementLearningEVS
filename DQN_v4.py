@@ -105,7 +105,6 @@ def main():
         targetDQN = dqn.DQN(sess, INPUT_SIZE, OUTPUT_SIZE, name="target")
         sess.run(tf.global_variables_initializer())
 
-        # initial copy q_net -> target_net
         copy_ops = get_copy_var_ops(dest_scope_name="target", src_scope_name="main")
         sess.run(copy_ops)
 
@@ -124,6 +123,7 @@ def main():
             # loadstate = sim.sim_get_peak_price_at_ts(ts)
             loadstate = sim.sim_get_load_state(ts)
             state = np.array([ts, soc, ev.TS_Arrive, ev.TS_Depart, curload, loadstate])
+
 
             print("\nEpisode: {0} e:{1:06.4f} ".format(episode, e))
 
