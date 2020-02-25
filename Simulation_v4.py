@@ -189,51 +189,12 @@ class Simulation:
         #     cost = amount*94.2
         # elif loadstate == 2:#peak
         #     cost = amount*160.4
-# 충전은 +, 방전은 -
-
-
-
+        # 충전은 +, 방전은 -
 
         done = self.sim_depart_check_EV(ts, ev)
         curload = self.baseload[ts]
         return np.array([ts, ev.SoC*100, ev.TS_Arrive, ev.TS_Depart, curload, loadstate]), reward, done, cost, amount*(-1)
 
-    def sim_main(self):
-        self.sim_init(0)
-        for numSlot in range(self.num_TimeSlot):
-            tmp_arrive_now = []
-            for e in range(len(self.entry_EV)):
-                ev = self.entry_EV[e]
-                if numSlot == ev.TS_Arrive:
-                    self.entry_EV_Stay.append(ev)
-                    tmp_arrive_now.append(ev)
-
-                ###############################################################################################
-                #                        self.sim_scheduling_continu(ev, numSlot)
-                #                        self.sim_scheduling_continu_less_avg_load(ev, numSlot)
-                #                        self.sim_scheduling_discrete_less_load(ev, numSlot)
-                ###############################################################################################
-
-                if numSlot < ev.TS_Arrive:
-                    break
-
-            if len(tmp_arrive_now) > 0:
-                tmp_arrive_now.sort(key=lambda object: object.req_SoC, reverse=True)
-
-            ###############################################################################################
-            for e in range(len(tmp_arrive_now)):
-                ev = tmp_arrive_now[e]
-                self.sim_scheduling_discrete_less_load(ev, numSlot)
-            ###############################################################################################
-            e = 0
-            while e < len(self.entry_EV_Stay):
-                ev = self.entry_EV_Stay[e]
-                if numSlot == ev.TS_Depart:
-                    self.entry_EV_Stay.pop(e)
-                else:
-                    e += 1
-
-        return 0
     def sim_make_EV(self, id_EV, type_EV, soc, t_arr, t_stay, t_depart):
         ev = PEV(id_EV, type_EV, soc, t_arr, t_stay, t_depart)
         return ev
@@ -328,20 +289,6 @@ class Simulation:
         print('**************** end num', len(self.entry_EV_Stay))
 
         return
-
-
-    #
-    # def sim_check_EV(self, ts):
-    #     # print(ts)
-    #     e = 0
-    #     while e < len(self.entry_EV):
-    #         ev = self.entry_EV[e]
-    #         if ts == ev.TS_Arrive:
-    #             self.entry_EV.pop(e)
-    #             self.entry_EV_Stay.append(ev)
-    #             # ev.get_info_EV()
-    #         else:
-    #             break
 
     def sim_depart_check_EV(self, ts, dev):
 

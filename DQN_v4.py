@@ -114,8 +114,8 @@ def main():
             tot_cost = 0
             done = 0
             step_count = 0
-            ev = sim.sim_init( np.random.randint(0, 7) )
-            # ev = sim.sim_init(0)
+            # ev = sim.sim_init( np.random.randint(0, 7) )
+            ev = sim.sim_init(0)
             # slot number, soc, at, dt, curr load, load state
             ts = ev.TS_Arrive
             soc = ev.SoC*100
