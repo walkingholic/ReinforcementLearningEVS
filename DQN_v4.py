@@ -126,7 +126,6 @@ def main():
             state = np.array([ts, soc, ev.TS_Arrive, ev.TS_Depart, curload, loadstate])
 
             print("\nEpisode: {0} e:{1:06.4f} ".format(episode, e))
-            # ev.get_info_EV();
 
             while done == 0 :
                 Qpre = mainDQN.predict(state)
@@ -137,13 +136,16 @@ def main():
                 next_state, reward, done, cost, amount= sim.sim_step(action, ev, ts)
                 # print('TS: {0}, Action: {1}, Reward: {2:9.2f}, SoC: {3:05.4f}, loadstate: {4} cur bat: {5:05.4f}'.format(ts, action, reward, ev.SoC, loadstate, ev.cur_bat_power))
                 tot_cost += cost
+
                 ts += 1
+
                 if done == 1:
                     reward = 100
                 elif done == -1:
                     reward = -50
                 elif done == -2:
                     reward = -100
+
                 tot_reward += reward
                 replay_buffer.append((state, action, reward, next_state))
                 state = next_state
@@ -192,6 +194,50 @@ def main():
         tot_soc_history.clear()
         tot_diff_soc_history.clear()
 
+#################################################################################################################
+
+        tot_reward = 0
+        tot_cost = 0
+        done = 0
+        ev = sim.sim_init(0)
+        # slot number, soc, at, dt, curr load, load state
+        ts = ev.TS_Arrive
+        soc = ev.SoC*100
+        curload = sim.baseload[ts]
+        loadstate = sim.sim_get_load_state(ts)
+        state = np.array([ts, soc, ev.TS_Arrive, ev.TS_Depart, curload, loadstate])
+
+        while done == 0 :
+            Qpre = mainDQN.predict(state)
+            action = np.argmax(Qpre)
+            state, reward, done, cost, amount= sim.sim_step(action, ev, ts)
+            tot_cost += cost
+            ts += 1
+            if done == 1:
+                reward = 100
+            elif done == -1:
+                reward = -50
+            elif done == -2:
+                reward = -100
+            tot_reward += reward
+
+        tot_reward_history.append(tot_reward)
+        tot_cost_history.append(tot_cost)
+        tot_soc_history.append(ev.SoC)
+        tot_diff_soc_history.append(ev.SoC - ev.init_SoC)
+        print('Tot Reward: {0:9.2f}'.format(tot_reward))
+        print('initial SoC: {0:05.4f}, final SoC: {1:05.4f}'.format(ev.init_SoC, ev.SoC))
+        print('Cost: {0:06.2f}'.format(tot_cost))
+        print('Charing: {0:06.2f}, Discharing: {1:06.2f}'.format(np.sum(sim.charging_load_list_grid), np.sum(sim.discharging_load_list_ev)))
+
+        plt.title('1 EV')
+        plt.plot(sim.baseload)
+        plt.plot(sim.charging_load_list_grid)
+        plt.plot(sim.discharging_load_list_grid)
+        plt.plot(sim.baseload + sim.charging_load_list_grid + sim.discharging_load_list_grid)
+        plt.show()
+
+
 
         for day in range(1):
             sim.sim_init_test(day)
@@ -227,7 +273,6 @@ def main():
             plt.plot(sim.baseload + sim.charging_load_list_grid + sim.discharging_load_list_grid)
             plt.show()
 
-
         for day in range(1):
             sim.sim_init_test(day)
             print('day', day)
@@ -262,82 +307,41 @@ def main():
             plt.plot(sim.baseload + sim.charging_load_list_grid + sim.discharging_load_list_grid)
             plt.show()
 
+        for day in range(1):
+            sim.sim_init_test(day)
+            print('day', day)
+            for ts in range(96):
+                print('##################################################  ts : ', ts)
+                sim.sim_check_EVs(ts)
+
+                e = 0
+                print('Entry: ', len(sim.entry_EV))
+                print('Stay: ', len(sim.entry_EV_Stay))
+                print('Depart: ', len(sim.entry_EV_Depart))
+                while e < len(sim.entry_EV_Stay):
+                    ev = sim.entry_EV_Stay[e]
+                    soc = ev.SoC
+                    curload = sim.baseload[ts] + sim.charging_load_list_grid[ts] + sim.discharging_load_list_grid[
+                        ts]
+                    loadstate = sim.sim_get_load_state(ts)
+                    state = np.array([ts, soc, ev.TS_Arrive, ev.TS_Depart, curload, loadstate])
+
+
+                    action = 0
+                    state, reward, done, cost, amount = sim.sim_step(action, ev, ts)
+
+                    sim.sim_depart_check_EVs(ev, ts, done)
+                    if done == 0:
+                        e += 1
+
+            plt.title('Just Charging')
+            plt.plot(sim.baseload)
+            plt.plot(sim.charging_load_list_grid)
+            plt.plot(sim.discharging_load_list_grid)
+            plt.plot(sim.baseload + sim.charging_load_list_grid + sim.discharging_load_list_grid)
+            plt.show()
 
         #
-        #
-        #
-        #
-        #
-        #
-        #
-        #
-        #
-        # for n in range(1000):
-        #     tot_reward = 0
-        #     tot_cost = 0
-        #     done = 0
-        #     ev = sim.sim_init(0)
-        #     # slot number, soc, at, dt, curr load, load state
-        #     ts = ev.TS_Arrive
-        #     soc = ev.SoC*100
-        #     curload = sim.baseload[ts]
-        #     # loadstate = sim.sim_get_peak_price_at_ts(ts)
-        #     loadstate = sim.sim_get_load_state(ts)
-        #
-        #     state = np.array([ts, soc, ev.TS_Arrive, ev.TS_Depart, curload, loadstate])
-        #
-        #     while done == 0:
-        #         Qpre = mainDQN.predict(state)
-        #         action = np.argmax(Qpre)
-        #
-        #         state, reward, done, cost, amount = sim.sim_step(action, ev, ts)
-        #         # print('TS: {0}, Action: {1}, Reward: {2:9.2f}, SoC: {3:05.4f}, loadstate: {4} cur bat: {5:05.4f} cost: {6:05.2f}'.format(ts, action, reward, ev.SoC, loadstate, ev.cur_bat_power, cost))
-        #         tot_cost += cost
-        #         ts += 1
-        #         if done == 1:
-        #             reward = 100
-        #         elif done == -1:
-        #             reward = -50
-        #         elif done == -2:
-        #             reward = -100
-        #         tot_reward += reward
-        #
-        #     tot_reward_history.append(tot_reward)
-        #     tot_cost_history.append(tot_cost)
-        #     tot_soc_history.append(ev.SoC)
-        #     tot_diff_soc_history.append(ev.SoC - ev.init_SoC)
-        #
-        #     print('Tot Reward: {0:9.2f}'.format(tot_reward))
-        #     print('initial SoC: {0:05.4f}, final SoC: {1:05.4f}'.format(ev.init_SoC, ev.SoC))
-        #     print('Cost: {0:06.2f}'.format(tot_cost))
-        #     print('Charing: {0:06.2f}, Discharing: {1:06.2f}'.format(np.sum(sim.charging_load_list),
-        #                                                          np.sum(sim.discharging_load_list_ev)))
-        #
-        #
-        #
-        # plt.bar(np.arange(len(tot_reward_history)), tot_reward_history)
-        # plt.show(block=False)
-        # fig = plt.gcf()
-        # fig.savefig('result/test_tot_reward_history.png', dpi=fig.dpi)
-        # plt.clf()
-        #
-        # plt.bar(np.arange(len(tot_reward_history)), tot_cost_history)
-        # plt.show(block=False)
-        # fig = plt.gcf()
-        # fig.savefig('result/test_tot_cost_history.png', dpi=fig.dpi)
-        # plt.clf()
-        #
-        # plt.bar(np.arange(len(tot_reward_history)), tot_soc_history)
-        # plt.show(block=False)
-        # fig = plt.gcf()
-        # fig.savefig('result/test_tot_soc_history.png', dpi=fig.dpi)
-        # plt.clf()
-        #
-        # plt.bar(np.arange(len(tot_reward_history)), tot_diff_soc_history)
-        # plt.show(block=False)
-        # fig = plt.gcf()
-        # fig.savefig('result/test_tot_diff_soc_history.png', dpi=fig.dpi)
-        # plt.clf()
 
 
 
