@@ -27,7 +27,7 @@ DISCOUNT_RATE = 0.99
 REPLAY_MEMORY = 50000
 BATCH_SIZE = 80
 TARGET_UPDATE_FREQUENCY = 1
-MAX_EPISODES = 3000
+MAX_EPISODES = 2500
 
 filename = 'data/load.txt'
 fo = open(filename, 'w')
