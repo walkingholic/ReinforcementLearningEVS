@@ -153,8 +153,6 @@ class Simulation:
         return self.entry_EV
 
     def sim_step(self, action, ev, ts):
-        # charing_list.sort()
-        # print(charing_list)
         loadstate = self.sim_get_load_state(ts)
         cost = 0
         reward = 0
