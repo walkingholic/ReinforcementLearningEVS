@@ -179,23 +179,14 @@ class Simulation:
 
 
         cost = amount * self.basecost[ts]
-
-        # loadstate = self.sim_get_peak_price_at_ts(ts)
-        # if loadstate == 0:#off
-        #     cost = amount*49.8
-        # elif loadstate == 1:#mid
-        #     cost = amount*94.2
-        # elif loadstate == 2:#peak
-        #     cost = amount*160.4
-        # 충전은 +, 방전은 -
-
         done = self.sim_depart_check_EV(ts, ev)
 
-        nextTS = ts - 1
+        nextTS = ts + 1
         nextload = self.baseload[nextTS] + self.charging_load_list_grid[nextTS] + self.discharging_load_list_grid[nextTS]
         remainTS = ev.TS_Depart - nextTS
         nextloadstate = self.sim_get_load_state(nextTS)
-        return np.array([nextTS, ev.SoC*100, remainTS, nextload, nextloadstate]), reward, done, cost, amount*(-1)
+
+        return np.array([nextTS, ev.SoC*100, remainTS, nextload, nextloadstate]), nextTS,  reward, done, cost, amount*(-1)
 
     def sim_make_EV(self, id_EV, type_EV, soc, t_arr, t_stay, t_depart):
         ev = PEV(id_EV, type_EV, soc, t_arr, t_stay, t_depart)
@@ -258,7 +249,6 @@ class Simulation:
             load_state=0
 
         return load_state
-
     def sim_check_EVs(self, ts):
         # print(ts)
         e = 0
@@ -270,7 +260,6 @@ class Simulation:
                 # ev.get_info_EV()
             else:
                 break
-
     def sim_depart_check_EVs(self, ev, ts, done):
 
 
@@ -294,7 +283,7 @@ class Simulation:
 
     def sim_depart_check_EV(self, ts, dev):
 
-        if ts == dev.TS_Depart-1:# 최종 결과가
+        if ts+1 == dev.TS_Depart:# 최종 결과가
             if dev.SoC < 0.8:
                 done = -1
             else:

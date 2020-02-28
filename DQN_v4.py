@@ -127,18 +127,22 @@ def main():
             state = np.array([ts, soc, remainTS, curload, loadstate])
 
             print("\nEpisode: {0} e:{1:06.4f} ".format(episode, e))
+            print("Start {} - End {}".format(ev.TS_Arrive, ev.TS_Depart))
+            # print("State: ", state)
 
-            while done == 0 :
+            while done == 0:
+                print("State: ", state)
                 Qpre = mainDQN.predict(state)
+
                 if np.random.rand() < e:
                     action = np.random.randint(0, 3)
                 else:
                     action = np.argmax(Qpre)
-                next_state, reward, done, cost, amount= sim.sim_step(action, ev, ts)
-                # print('TS: {0}, Action: {1}, Reward: {2:9.2f}, SoC: {3:05.4f}, loadstate: {4} cur bat: {5:05.4f}'.format(ts, action, reward, ev.SoC, loadstate, ev.cur_bat_power))
+
+                next_state, ts, reward, done, cost, amount= sim.sim_step(action, ev, ts)
                 tot_cost += cost
 
-                ts += 1
+                # print('TS: {0}, Action: {1}, Reward: {2:9.2f}, SoC: {3:05.4f}, loadstate: {4} cur bat: {5:05.4f}'.format(ts, action, reward, ev.SoC, loadstate, ev.cur_bat_power))
 
                 if done == 1:
                     reward = 100
@@ -204,16 +208,22 @@ def main():
         # slot number, soc, at, dt, curr load, load state
         ts = ev.TS_Arrive
         soc = ev.SoC*100
-        curload = sim.baseload[ts]
+
+        curload = sim.baseload[ts] + sim.charging_load_list_grid[ts] + sim.discharging_load_list_grid[ts]
+        # loadstate = sim.sim_get_peak_price_at_ts(ts)
         loadstate = sim.sim_get_load_state(ts)
-        state = np.array([ts, soc, ev.TS_Arrive, ev.TS_Depart, curload, loadstate])
+        # state = np.array([ts, soc, ev.TS_Arrive, ev.TS_Depart, curload, loadstate])
+        remainTS = ev.TS_Depart - ts
+        state = np.array([ts, soc, remainTS, curload, loadstate])
+
+
 
         while done == 0 :
             Qpre = mainDQN.predict(state)
             action = np.argmax(Qpre)
-            state, reward, done, cost, amount= sim.sim_step(action, ev, ts)
+            state, ts, reward, done, cost, amount= sim.sim_step(action, ev, ts)
             tot_cost += cost
-            ts += 1
+
             if done == 1:
                 reward = 100
             elif done == -1:
@@ -244,6 +254,7 @@ def main():
             sim.sim_init_test(day)
             tot_soc_history.clear()
             print('day', day)
+
             for ts in range(96):
                 print('##################################################  ts : ', ts)
                 sim.sim_check_EVs(ts)
@@ -252,17 +263,18 @@ def main():
                 print('Entry: ', len(sim.entry_EV))
                 print('Stay: ', len(sim.entry_EV_Stay))
                 print('Depart: ', len(sim.entry_EV_Depart))
+
                 while e < len(sim.entry_EV_Stay):
                     ev = sim.entry_EV_Stay[e]
-                    soc = ev.SoC
-                    curload = sim.baseload[ts]+sim.charging_load_list_grid[ts]+sim.discharging_load_list_grid[ts]
-                    loadstate = sim.sim_get_load_state(ts)
-                    state = np.array([ts, soc, ev.TS_Arrive, ev.TS_Depart, curload, loadstate])
+                    # soc = ev.SoC*100
+                    # curload = sim.baseload[ts]+sim.charging_load_list_grid[ts]+sim.discharging_load_list_grid[ts]
+                    # loadstate = sim.sim_get_load_state(ts)
+                    # state = np.array([ts, soc, ev.TS_Depart-ts, curload, loadstate])
 
                     # Qpre = mainDQN.predict(state)
                     # action = np.argmax(Qpre)
                     action = np.random.randint(0, 3)
-                    state, reward, done, cost, amount = sim.sim_step(action, ev, ts)
+                    _, _, reward, done, cost, amount = sim.sim_step(action, ev, ts)
 
                     sim.sim_depart_check_EVs(ev, ts, done)
                     if done == 0 :
@@ -296,12 +308,12 @@ def main():
                     soc = ev.SoC
                     curload = sim.baseload[ts]+sim.charging_load_list_grid[ts]+sim.discharging_load_list_grid[ts]
                     loadstate = sim.sim_get_load_state(ts)
-                    state = np.array([ts, soc, ev.TS_Arrive, ev.TS_Depart, curload, loadstate])
+                    state = np.array([ts, soc, ev.TS_Depart-ts, curload, loadstate])
 
                     Qpre = mainDQN.predict(state)
                     action = np.argmax(Qpre)
                     # action = np.random.randint(0, 3)
-                    state, reward, done, cost, amount = sim.sim_step(action, ev, ts)
+                    _, _, done, cost, amount = sim.sim_step(action, ev, ts)
 
                     sim.sim_depart_check_EVs(ev, ts, done)
                     if done == 0 :
