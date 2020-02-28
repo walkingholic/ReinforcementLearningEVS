@@ -27,7 +27,7 @@ DISCOUNT_RATE = 0.99
 REPLAY_MEMORY = 50000
 BATCH_SIZE = 80
 TARGET_UPDATE_FREQUENCY = 1
-MAX_EPISODES = 2500
+MAX_EPISODES = 3000
 
 filename = 'data/load.txt'
 fo = open(filename, 'w')
@@ -131,7 +131,7 @@ def main():
             # print("State: ", state)
 
             while done == 0:
-                print("State: ", state)
+                # print("State: ", state)
                 Qpre = mainDQN.predict(state)
 
                 if np.random.rand() < e:
@@ -313,7 +313,7 @@ def main():
                     Qpre = mainDQN.predict(state)
                     action = np.argmax(Qpre)
                     # action = np.random.randint(0, 3)
-                    _, _, done, cost, amount = sim.sim_step(action, ev, ts)
+                    _, _, _, done, cost, amount = sim.sim_step(action, ev, ts)
 
                     sim.sim_depart_check_EVs(ev, ts, done)
                     if done == 0 :
@@ -352,7 +352,7 @@ def main():
 
 
                     action = 0
-                    state, reward, done, cost, amount = sim.sim_step(action, ev, ts)
+                    _, _, _, done, cost, amount = sim.sim_step(action, ev, ts)
 
                     sim.sim_depart_check_EVs(ev, ts, done)
                     if done == 0:
