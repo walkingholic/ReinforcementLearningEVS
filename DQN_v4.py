@@ -20,7 +20,7 @@ from Simulation_v4 import Simulation
 
 
 sim = Simulation(100, 0)
-INPUT_SIZE = 6
+INPUT_SIZE = 5
 OUTPUT_SIZE = 3
 
 DISCOUNT_RATE = 0.99
@@ -119,11 +119,12 @@ def main():
             # slot number, soc, at, dt, curr load, load state
             ts = ev.TS_Arrive
             soc = ev.SoC*100
-            curload = sim.baseload[ts]
+            curload = sim.baseload[ts] + sim.charging_load_list_grid[ts] + sim.discharging_load_list_grid[ts]
             # loadstate = sim.sim_get_peak_price_at_ts(ts)
             loadstate = sim.sim_get_load_state(ts)
-            state = np.array([ts, soc, ev.TS_Arrive, ev.TS_Depart, curload, loadstate])
-
+            # state = np.array([ts, soc, ev.TS_Arrive, ev.TS_Depart, curload, loadstate])
+            remainTS = ev.TS_Depart - ts
+            state = np.array([ts, soc, remainTS, curload, loadstate])
 
             print("\nEpisode: {0} e:{1:06.4f} ".format(episode, e))
 
@@ -238,9 +239,10 @@ def main():
         plt.show()
 
 
-
-        for day in range(1):
+        period = 1
+        for day in range(period):
             sim.sim_init_test(day)
+            tot_soc_history.clear()
             print('day', day)
             for ts in range(96):
                 print('##################################################  ts : ', ts)
@@ -265,6 +267,8 @@ def main():
                     sim.sim_depart_check_EVs(ev, ts, done)
                     if done == 0 :
                         e += 1
+                    else:
+                        tot_soc_history.append(ev.SoC)
 
             plt.title('Random')
             plt.plot(sim.baseload)
@@ -273,7 +277,10 @@ def main():
             plt.plot(sim.baseload + sim.charging_load_list_grid + sim.discharging_load_list_grid)
             plt.show()
 
-        for day in range(1):
+            plt.plot(tot_soc_history)
+            plt.show()
+
+        for day in range(period):
             sim.sim_init_test(day)
             print('day', day)
             for ts in range(96):
@@ -299,6 +306,8 @@ def main():
                     sim.sim_depart_check_EVs(ev, ts, done)
                     if done == 0 :
                         e += 1
+                    else:
+                        tot_soc_history.append(ev.SoC)
 
             plt.title('Reinforcement')
             plt.plot(sim.baseload)
@@ -307,7 +316,10 @@ def main():
             plt.plot(sim.baseload + sim.charging_load_list_grid + sim.discharging_load_list_grid)
             plt.show()
 
-        for day in range(1):
+            plt.plot(tot_soc_history)
+            plt.show()
+
+        for day in range(period):
             sim.sim_init_test(day)
             print('day', day)
             for ts in range(96):
@@ -333,12 +345,18 @@ def main():
                     sim.sim_depart_check_EVs(ev, ts, done)
                     if done == 0:
                         e += 1
+                    else:
+                        tot_soc_history.append(ev.SoC)
+
 
             plt.title('Just Charging')
             plt.plot(sim.baseload)
             plt.plot(sim.charging_load_list_grid)
             plt.plot(sim.discharging_load_list_grid)
             plt.plot(sim.baseload + sim.charging_load_list_grid + sim.discharging_load_list_grid)
+            plt.show()
+
+            plt.plot(tot_soc_history)
             plt.show()
 
         #
