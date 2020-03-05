@@ -29,7 +29,6 @@ class DQN:
         self.net_name = name
 
         self._build_network()
-        # self.keep_prob = tf.placeholder(tf.float32)
 
 
     def _build_network(self, h_size= 18, l_rate=0.001) -> None:
@@ -42,19 +41,15 @@ class DQN:
 
             self._X = tf.placeholder(tf.float32, [None, self.input_size], name="input_x")
             net = self._X
-            # self.keep_prob = tf.placeholder(tf.float32)
 
             W1 = tf.get_variable("W1", shape=[self.input_size, h_size], initializer=tf.contrib.layers.xavier_initializer())
             layer1 = tf.nn.tanh(tf.matmul(net, W1))
-            # layer1 = tf.nn.dropout(layer1, keep_prob=self.keep_prob)
 
             W2 = tf.get_variable("W2", shape=[h_size, h_size], initializer=tf.contrib.layers.xavier_initializer())
             layer2 = tf.nn.tanh(tf.matmul(layer1, W2))
-            # layer2 = tf.nn.dropout(layer2, keep_prob=self.keep_prob)
 
             W3 = tf.get_variable("W3", shape=[h_size, h_size], initializer=tf.contrib.layers.xavier_initializer())
             layer3 = tf.nn.tanh(tf.matmul(layer2, W3))
-            # layer4 = tf.nn.dropout(layer4, keep_prob=self.keep_prob)
 
             W4 = tf.get_variable("W4", shape=[h_size, self.output_size], initializer=tf.contrib.layers.xavier_initializer())
 
@@ -76,15 +71,15 @@ class DQN:
         x = np.reshape(state, [-1, self.input_size])
         return self.session.run(self._Qpred, feed_dict={self._X: x})
 
-    def predict_test(self, state: np.ndarray) -> np.ndarray:
-        """Returns Q(s, a)
-        Args:
-            state (np.ndarray): State array, shape (n, input_dim)
-        Returns:
-            np.ndarray: Q value array, shape (n, output_dim)
-        """
-        x = np.reshape(state, [-1, self.input_size])
-        return self.session.run(self._Qpred, feed_dict={self._X: x})
+    # def predict_test(self, state: np.ndarray) -> np.ndarray:
+    #     """Returns Q(s, a)
+    #     Args:
+    #         state (np.ndarray): State array, shape (n, input_dim)
+    #     Returns:
+    #         np.ndarray: Q value array, shape (n, output_dim)
+    #     """
+    #     x = np.reshape(state, [-1, self.input_size])
+    #     return self.session.run(self._Qpred, feed_dict={self._X: x})
 
     def update(self, x_stack: np.ndarray, y_stack: np.ndarray) -> list:
         """Performs updates on given X and y and returns a result

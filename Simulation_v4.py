@@ -11,6 +11,7 @@ import numpy as np
 from datetime import datetime
 import matplotlib.pyplot as plt
 import copy
+from sklearn.preprocessing import MinMaxScaler
 
 
 # parking lot  C/D Scheduling
@@ -60,6 +61,10 @@ class Simulation:
             baseload.append(copy.deepcopy(tmp))
         self.np_baseload = np.array(baseload)
 
+        # print(self.np_baseload[1] )
+        # print("minmax")
+        # self.np_baseload[1] = MinMaxScaler(self.np_baseload)
+        # print(self.np_baseload[1])
 
     def sim_init(self, day):
         self.entry_EV.clear()
@@ -88,7 +93,7 @@ class Simulation:
                 soc[i] = 0.95
         depart = arriv+stay
         for i in range(self.num_EV):
-            self.entry_EV.append(self.sim_make_EV(i, 0, soc[i], arriv[i], stay[i], depart[i]))
+            self.entry_EV.append(self.sim_make_EV(i, 0, soc[i], arriv[i],  depart[i]))
 
         # sim.entry_EV.sort(key=lambda object: object.ID)
         # asoclist = []
@@ -108,7 +113,13 @@ class Simulation:
             soc = 0.1
         elif soc >= 1.0:
             soc = 0.95
-        ev = self.sim_make_EV(0, 0, soc, arriv, stay, depart)
+
+
+
+        if depart > 15*95:
+            depart = 15*95
+
+        ev = self.sim_make_EV(0, 0, soc, arriv, depart)
         return ev
 
     def sim_init_test(self, day):
@@ -138,7 +149,7 @@ class Simulation:
                 soc[i] = 0.95
         depart = arriv + stay
         for i in range(self.num_EV):
-            self.entry_EV.append(self.sim_make_EV(i, 0, soc[i], arriv[i], stay[i], depart[i]))
+            self.entry_EV.append(self.sim_make_EV(i, 0, soc[i], arriv[i],  depart[i]))
 
         # sim.entry_EV.sort(key=lambda object: object.ID)
         # asoclist = []
@@ -179,7 +190,9 @@ class Simulation:
 
 
         cost = amount * self.basecost[ts]
+        ev.tot_cost += cost
         done = self.sim_depart_check_EV(ts, ev)
+        # reward = 0
 
         nextTS = ts + 1
         nextload = self.baseload[nextTS] + self.charging_load_list_grid[nextTS] + self.discharging_load_list_grid[nextTS]
@@ -188,8 +201,8 @@ class Simulation:
 
         return np.array([nextTS, ev.SoC*100, remainTS, nextload, nextloadstate]), nextTS,  reward, done, cost, amount*(-1)
 
-    def sim_make_EV(self, id_EV, type_EV, soc, t_arr, t_stay, t_depart):
-        ev = PEV(id_EV, type_EV, soc, t_arr, t_stay, t_depart)
+    def sim_make_EV(self, id_EV, type_EV, soc, t_arr,  t_depart):
+        ev = PEV(id_EV, type_EV, soc, t_arr,  t_depart)
         return ev
     def sim_slot_to_time(self, ts):
         day = math.floor(ts / (self.SlotPerHour * 24))
@@ -242,13 +255,13 @@ class Simulation:
             load_state =2
         else:
             print('error')
-
             print( '{} {} {}'.format(minload, self.baseload[ts] , (midload - minload)/2 + minload ))
             print('{} {} {}'.format((midload - minload)/2 + minload , self.baseload[ts], (maxload - midload)/2 + midload))
             print('{} {} {}'.format((maxload - midload)/2 + midload, self.baseload[ts], maxload))
             load_state=0
 
         return load_state
+
     def sim_check_EVs(self, ts):
         # print(ts)
         e = 0
@@ -345,7 +358,7 @@ class Simulation:
 
 
 class PEV:
-    def __init__(self, id_EV, typeEV, soc, t_arr, t_stay, t_depart):
+    def __init__(self, id_EV, typeEV, soc, t_arr, t_depart):
         self.ID = id_EV
         self.ChargingLimit = 1.0
         self.SoC = soc
@@ -375,13 +388,14 @@ class PEV:
 
         # self.req_battery_charging = self.req_SoC * self.battery_capa
         self.T_Arrive = t_arr
-        self.T_Stay = t_stay
         self.T_Depart = t_depart
         self.TS_Arrive = self.sim_time_to_slot_m_ceil(t_arr)
         self.TS_Depart = self.sim_time_to_slot_m_floor(t_depart)
         self.TS_Stay = self.TS_Depart - self.TS_Arrive
 
         self.req_bat_power = self.battery_capa - self.cur_bat_power
+
+        self.tot_cost = 0
         # req_timeslot = self.req_power / (self.charging_power / self.SlotPerHour)
         # self.remain = self.req_power % (self.charging_power / self.SlotPerHour)
         # self.req_charging_timeslot = math.ceil(req_timeslot)
@@ -439,40 +453,40 @@ class PEV:
 if __name__ == "__main__":
     sim = Simulation(100, 7)
 
-    for day in range(1):
-        sim.sim_init(day)
-
-        for t in range(96):
-            sim.sim_check_EVs(t)
-            # print(t, len(sim.entry_EV), len(sim.entry_EV_Stay), len(sim.entry_EV_Depart))
-            for e in range(len(sim.entry_EV_Stay)):
-                ev = sim.entry_EV_Stay[e]
-                soc = ev.SoC
-                # print(t, ev.ID, soc)
-                action = np.random.randint(0, 3)
-                # action = 1
-                if action == 0:
-                    sim.sim_Charging_EV(t, ev)
-                elif action ==1:
-                    sim.sim_Discharging_EV(t, ev)
-                else:
-                    sim.sim_Idle_EV(t, ev)
-
-            # sim.sim_after_check_EVs(t)
-
-        sim.entry_EV_Depart.sort(key=lambda object: object.ID)
-        soclist = []
-        for ev in range(len(sim.entry_EV_Depart)):
-            # print(sim.entry_EV_Depart[ev].ID, sim.entry_EV_Depart[ev].SoC)
-            soclist.append(sim.entry_EV_Depart[ev].SoC)
-        print(np.average(soclist))
-        plt.bar(np.arange(len(sim.entry_EV_Depart)), soclist)
-        plt.show()
-
-        print(sim.charging_load_list)
-        print(sim.discharging_load_list)
-        plt.bar(np.arange(96), sim.charging_load_list + sim.baseload)
-        plt.bar(np.arange(96), sim.baseload)
-        plt.bar(np.arange(96), sim.discharging_load_list)
-        plt.ylim(-100, 220)
-        plt.show()
+    # for day in range(1):
+    #     sim.sim_init(day)
+    #
+    #     for t in range(96):
+    #         sim.sim_check_EVs(t)
+    #         # print(t, len(sim.entry_EV), len(sim.entry_EV_Stay), len(sim.entry_EV_Depart))
+    #         for e in range(len(sim.entry_EV_Stay)):
+    #             ev = sim.entry_EV_Stay[e]
+    #             soc = ev.SoC
+    #             # print(t, ev.ID, soc)
+    #             action = np.random.randint(0, 3)
+    #             # action = 1
+    #             if action == 0:
+    #                 sim.sim_Charging_EV(t, ev)
+    #             elif action ==1:
+    #                 sim.sim_Discharging_EV(t, ev)
+    #             else:
+    #                 sim.sim_Idle_EV(t, ev)
+    #
+    #         # sim.sim_after_check_EVs(t)
+    #
+    #     sim.entry_EV_Depart.sort(key=lambda object: object.ID)
+    #     soclist = []
+    #     for ev in range(len(sim.entry_EV_Depart)):
+    #         # print(sim.entry_EV_Depart[ev].ID, sim.entry_EV_Depart[ev].SoC)
+    #         soclist.append(sim.entry_EV_Depart[ev].SoC)
+    #     print(np.average(soclist))
+    #     plt.bar(np.arange(len(sim.entry_EV_Depart)), soclist)
+    #     plt.show()
+    #
+    #     print(sim.charging_load_list)
+    #     print(sim.discharging_load_list)
+    #     plt.bar(np.arange(96), sim.charging_load_list + sim.baseload)
+    #     plt.bar(np.arange(96), sim.baseload)
+    #     plt.bar(np.arange(96), sim.discharging_load_list)
+    #     plt.ylim(-100, 220)
+    #     plt.show()

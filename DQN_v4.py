@@ -73,25 +73,7 @@ def get_copy_var_ops(*, dest_scope_name: str, src_scope_name: str) -> List[tf.Op
 
     return op_holder
 
-# def bot_play(mainDQN: dqn.DQN, env: gym.Env) -> None:
-#     """Test runs with rendering and prints the total score
-#     Args:
-#         mainDQN (dqn.DQN): DQN agent to run a test
-#         env (gym.Env): Gym Environment
-#     """
-#     state = env.reset()
-#     reward_sum = 0
-#
-#     while True:
-#
-#         env.render()
-#         action = np.argmax(mainDQN.predict(state))
-#         state, reward, done, _ = env.step(action)
-#         reward_sum += reward
-#
-#         if done:
-#             print("Total score: {}".format(reward_sum))
-#             break
+
 
 def main():
     # store the previous observations in replay memory
@@ -114,8 +96,8 @@ def main():
             tot_cost = 0
             done = 0
             step_count = 0
-            # ev = sim.sim_init( np.random.randint(0, 7) )
-            ev = sim.sim_init(0)
+            ev = sim.sim_init( np.random.randint(0, 7) )
+            # ev = sim.sim_init(0)
             # slot number, soc, at, dt, curr load, load state
             ts = ev.TS_Arrive
             soc = ev.SoC*100
@@ -139,17 +121,17 @@ def main():
                 else:
                     action = np.argmax(Qpre)
 
-                next_state, ts, reward, done, cost, amount= sim.sim_step(action, ev, ts)
+                next_state, ts, reward, done, cost, amount = sim.sim_step(action, ev, ts)
                 tot_cost += cost
 
                 # print('TS: {0}, Action: {1}, Reward: {2:9.2f}, SoC: {3:05.4f}, loadstate: {4} cur bat: {5:05.4f}'.format(ts, action, reward, ev.SoC, loadstate, ev.cur_bat_power))
 
                 if done == 1:
-                    reward = 100
+                    reward += tot_cost
                 elif done == -1:
-                    reward = -50
+                    reward = -5000
                 elif done == -2:
-                    reward = -100
+                    reward = -5000
 
                 tot_reward += reward
                 replay_buffer.append((state, action, reward, next_state))
@@ -165,6 +147,7 @@ def main():
             tot_cost_history.append(tot_cost)
             tot_soc_history.append(ev.SoC)
             tot_diff_soc_history.append(ev.SoC - ev.init_SoC)
+
             print('Tot Reward: {0:9.2f}'.format(tot_reward))
             print('initial SoC: {0:05.4f}, final SoC: {1:05.4f}'.format(ev.init_SoC, ev.SoC))
             print('Cost: {0:06.2f}'.format(tot_cost))
@@ -194,42 +177,39 @@ def main():
         fig.savefig('result/tot_diff_soc_history.png', dpi=fig.dpi)
         plt.clf()
 
+
+
+        #################################################################################################################
+
         tot_reward_history.clear()
         tot_cost_history.clear()
         tot_soc_history.clear()
         tot_diff_soc_history.clear()
 
-#################################################################################################################
-
         tot_reward = 0
         tot_cost = 0
         done = 0
         ev = sim.sim_init(0)
-        # slot number, soc, at, dt, curr load, load state
         ts = ev.TS_Arrive
         soc = ev.SoC*100
 
         curload = sim.baseload[ts] + sim.charging_load_list_grid[ts] + sim.discharging_load_list_grid[ts]
-        # loadstate = sim.sim_get_peak_price_at_ts(ts)
         loadstate = sim.sim_get_load_state(ts)
-        # state = np.array([ts, soc, ev.TS_Arrive, ev.TS_Depart, curload, loadstate])
         remainTS = ev.TS_Depart - ts
         state = np.array([ts, soc, remainTS, curload, loadstate])
 
-
-
-        while done == 0 :
+        while done == 0:
             Qpre = mainDQN.predict(state)
             action = np.argmax(Qpre)
             state, ts, reward, done, cost, amount= sim.sim_step(action, ev, ts)
             tot_cost += cost
 
             if done == 1:
-                reward = 100
+                reward += tot_cost
             elif done == -1:
-                reward = -50
+                reward = -5000
             elif done == -2:
-                reward = -100
+                reward = -5000
             tot_reward += reward
 
         tot_reward_history.append(tot_reward)
@@ -253,6 +233,8 @@ def main():
         for day in range(period):
             sim.sim_init_test(day)
             tot_soc_history.clear()
+            tot_cost_history.clear()
+
             print('day', day)
 
             for ts in range(96):
@@ -266,21 +248,15 @@ def main():
 
                 while e < len(sim.entry_EV_Stay):
                     ev = sim.entry_EV_Stay[e]
-                    # soc = ev.SoC*100
-                    # curload = sim.baseload[ts]+sim.charging_load_list_grid[ts]+sim.discharging_load_list_grid[ts]
-                    # loadstate = sim.sim_get_load_state(ts)
-                    # state = np.array([ts, soc, ev.TS_Depart-ts, curload, loadstate])
-
-                    # Qpre = mainDQN.predict(state)
-                    # action = np.argmax(Qpre)
                     action = np.random.randint(0, 3)
                     _, _, reward, done, cost, amount = sim.sim_step(action, ev, ts)
 
                     sim.sim_depart_check_EVs(ev, ts, done)
-                    if done == 0 :
+                    if done == 0:
                         e += 1
                     else:
                         tot_soc_history.append(ev.SoC)
+                        tot_cost_history.append(ev.tot_cost)
 
             plt.title('Random')
             plt.plot(sim.baseload)
@@ -289,11 +265,13 @@ def main():
             plt.plot(sim.baseload + sim.charging_load_list_grid + sim.discharging_load_list_grid)
             plt.show()
 
-            plt.plot(tot_soc_history)
+            plt.bar(range(len(tot_soc_history)), tot_soc_history)
             plt.show()
 
         for day in range(period):
             sim.sim_init_test(day)
+            tot_soc_history.clear()
+            tot_cost_history.clear()
             print('day', day)
             for ts in range(96):
                 print('##################################################  ts : ', ts)
@@ -312,14 +290,14 @@ def main():
 
                     Qpre = mainDQN.predict(state)
                     action = np.argmax(Qpre)
-                    # action = np.random.randint(0, 3)
                     _, _, _, done, cost, amount = sim.sim_step(action, ev, ts)
 
                     sim.sim_depart_check_EVs(ev, ts, done)
-                    if done == 0 :
+                    if done == 0:
                         e += 1
                     else:
                         tot_soc_history.append(ev.SoC)
+                        tot_cost_history.append(ev.tot_cost)
 
             plt.title('Reinforcement')
             plt.plot(sim.baseload)
@@ -328,11 +306,16 @@ def main():
             plt.plot(sim.baseload + sim.charging_load_list_grid + sim.discharging_load_list_grid)
             plt.show()
 
-            plt.plot(tot_soc_history)
+            plt.bar(range(len(tot_soc_history)), tot_soc_history)
             plt.show()
+
+#######################################################################################################################
 
         for day in range(period):
             sim.sim_init_test(day)
+            tot_soc_history.clear()
+            tot_cost_history.clear()
+
             print('day', day)
             for ts in range(96):
                 print('##################################################  ts : ', ts)
@@ -345,12 +328,8 @@ def main():
                 while e < len(sim.entry_EV_Stay):
                     ev = sim.entry_EV_Stay[e]
                     soc = ev.SoC
-                    curload = sim.baseload[ts] + sim.charging_load_list_grid[ts] + sim.discharging_load_list_grid[
-                        ts]
+                    curload = sim.baseload[ts] + sim.charging_load_list_grid[ts] + sim.discharging_load_list_grid[ts]
                     loadstate = sim.sim_get_load_state(ts)
-                    state = np.array([ts, soc, ev.TS_Arrive, ev.TS_Depart, curload, loadstate])
-
-
                     action = 0
                     _, _, _, done, cost, amount = sim.sim_step(action, ev, ts)
 
@@ -359,7 +338,7 @@ def main():
                         e += 1
                     else:
                         tot_soc_history.append(ev.SoC)
-
+                        tot_cost_history.append(ev.tot_cost)
 
             plt.title('Just Charging')
             plt.plot(sim.baseload)
@@ -368,13 +347,8 @@ def main():
             plt.plot(sim.baseload + sim.charging_load_list_grid + sim.discharging_load_list_grid)
             plt.show()
 
-            plt.plot(tot_soc_history)
+            plt.bar(range(len(tot_soc_history)), tot_soc_history)
             plt.show()
-
-        #
-
-
-
 
 if __name__ == "__main__":
     main()
