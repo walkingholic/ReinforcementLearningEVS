@@ -31,35 +31,45 @@ class DQN:
         self._build_network()
 
 
-    def _build_network(self, h_size= 100, l_rate=0.001) -> None:
+    def _build_network(self, h_size= 64, l_rate=0.001) -> None:
         """DQN Network architecture (simple MLP)
         Args:
             h_size (int, optional): Hidden layer dimension
             l_rate (float, optional): Learning rate
         """
         with tf.variable_scope(self.net_name):
+            # input place holders
 
-            self._X = tf.placeholder(tf.float32, [None, self.input_size], name="input_x")
+            seq_length = 24
+            data_dim = 1
+            hidden_dim = 128
+            output_dim = 3
+            learning_rate = 0.01
+            self._X = tf.placeholder(tf.float32, [None, 26])
             net = self._X
+            net = tf.reshape(net, [-1, 26, 1])
 
-            W1 = tf.get_variable("W1", shape=[self.input_size, h_size], initializer=tf.contrib.layers.xavier_initializer())
-            layer1 = tf.nn.tanh(tf.matmul(net, W1))
+            # build a LSTM network
+            cell = tf.contrib.rnn.BasicLSTMCell(num_units=hidden_dim, state_is_tuple=True, activation=tf.tanh)
+            outputs, _states = tf.nn.dynamic_rnn(cell, net[:, 2:], dtype=tf.float32)
+            ev_state = tf.reshape(net[:, 0:2], [-1, 2])
+            input_concat = tf.concat([ev_state, outputs[:, -1]], 1)
 
-            W2 = tf.get_variable("W2", shape=[h_size, h_size], initializer=tf.contrib.layers.xavier_initializer())
-            layer2 = tf.nn.tanh(tf.matmul(layer1, W2))
+            # self._Qpred = tf.contrib.layers.fully_connected(input_concat, output_dim, activation_fn=None)
 
-            W3 = tf.get_variable("W3", shape=[h_size, h_size], initializer=tf.contrib.layers.xavier_initializer())
-            layer3 = tf.nn.tanh(tf.matmul(layer2, W3))
+            input_concat = tf.layers.dense(input_concat, h_size, activation=tf.nn.relu)
+            input_concat = tf.layers.dense(input_concat, self.output_size)
+            self._Qpred = input_concat
 
-            W4 = tf.get_variable("W4", shape=[h_size, self.output_size], initializer=tf.contrib.layers.xavier_initializer())
 
-            self._Qpred = tf.matmul(layer3, W4)
+
 
             self._Y = tf.placeholder(tf.float32, shape=[None, self.output_size])
             self._loss = tf.losses.mean_squared_error(self._Y, self._Qpred)
 
             optimizer = tf.train.AdamOptimizer(learning_rate=l_rate)
             self._train = optimizer.minimize(self._loss)
+
 
     def predict(self, state: np.ndarray) -> np.ndarray:
         """Returns Q(s, a)
@@ -68,18 +78,12 @@ class DQN:
         Returns:
             np.ndarray: Q value array, shape (n, output_dim)
         """
+        # print('predict')
         x = np.reshape(state, [-1, self.input_size])
+        # print('*************-----predict x ')
+        # print(np.shape(x))
         return self.session.run(self._Qpred, feed_dict={self._X: x})
 
-    # def predict_test(self, state: np.ndarray) -> np.ndarray:
-    #     """Returns Q(s, a)
-    #     Args:
-    #         state (np.ndarray): State array, shape (n, input_dim)
-    #     Returns:
-    #         np.ndarray: Q value array, shape (n, output_dim)
-    #     """
-    #     x = np.reshape(state, [-1, self.input_size])
-    #     return self.session.run(self._Qpred, feed_dict={self._X: x})
 
     def update(self, x_stack: np.ndarray, y_stack: np.ndarray) -> list:
         """Performs updates on given X and y and returns a result

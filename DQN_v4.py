@@ -11,7 +11,8 @@ import numpy as np
 import tensorflow as tf
 import random
 from collections import deque
-import dqn4 as dqn
+# import dqn4 as dqn
+import dqn4_with_RNN as dqn
 import matplotlib.pyplot as plt
 import copy
 # import gym
@@ -19,18 +20,16 @@ from typing import List
 from Simulation_v4 import Simulation
 
 
-sim = Simulation(100, 0)
-INPUT_SIZE = 5
+
+INPUT_SIZE = 26
 OUTPUT_SIZE = 3
 
 DISCOUNT_RATE = 0.99
 REPLAY_MEMORY = 50000
 BATCH_SIZE = 80
 TARGET_UPDATE_FREQUENCY = 1
-MAX_EPISODES = 3000
+MAX_EPISODES = 20000
 
-filename = 'data/load.txt'
-fo = open(filename, 'w')
 
 
 def replay_train(mainDQN: dqn.DQN, targetDQN: dqn.DQN, train_batch: list) -> float:
@@ -73,44 +72,96 @@ def get_copy_var_ops(*, dest_scope_name: str, src_scope_name: str) -> List[tf.Op
 
     return op_holder
 
-
+def MinMaxScaler(data):
+    ''' Min Max Normalization
+    Parameters
+    ----------
+    data : numpy.ndarray
+        input data to be normalized
+        shape: [Batch size, dimension]
+    Returns
+    ----------
+    data : numpy.ndarry
+        normalized data
+        shape: [Batch size, dimension]
+    References
+    ----------
+    .. [1] http://sebastianraschka.com/Articles/2014_about_feature_scaling.html
+    '''
+    numerator = data - np.min(data, 0)
+    denominator = np.max(data, 0) - np.min(data, 0)
+    # noise term prevents the zero division
+    return numerator / (denominator + 1e-7)
 
 def main():
     # store the previous observations in replay memory
+
+
+
     replay_buffer = deque(maxlen=REPLAY_MEMORY)
     tot_reward_history = []
     tot_cost_history = []
     tot_soc_history = []
     tot_diff_soc_history = []
+
+    pdata = np.loadtxt("data/smp_data.csv", delimiter=',', dtype=str)
+    pdata = pdata[:, 1:]
+    pdata = pdata[::-1]
+    pdata = pdata.astype(np.float32)
+
+    price_data = pdata[:, :-3]
+
+
+    data_set = price_data.reshape(-1, 1)
+
+
+    train_day = int(len(data_set)/24 * 0.8)
+    train_size = train_day*24
+
+    test_day = int(len(data_set)/24 - train_day)
+    test_size = test_day*24
+
+    train_set = data_set[0:train_size]
+    test_set = data_set[train_size:]
+
+    train_set = MinMaxScaler(train_set)
+    test_set = MinMaxScaler(test_set)
+
+    # print(price_data[train_day])
+    # print(test_set[0:24])
+
     with tf.Session() as sess:
+
         mainDQN = dqn.DQN(sess, INPUT_SIZE, OUTPUT_SIZE, name="main")
         targetDQN = dqn.DQN(sess, INPUT_SIZE, OUTPUT_SIZE, name="target")
         sess.run(tf.global_variables_initializer())
 
         copy_ops = get_copy_var_ops(dest_scope_name="target", src_scope_name="main")
         sess.run(copy_ops)
+        step = 0
+        for epi in range(1, MAX_EPISODES):
+        # for episode in range(1, 2):
+            day = np.random.randint(1, train_day)
 
-        for episode in range(MAX_EPISODES):
-            e = 1. / ((episode / 150) + 1)
+            e = 1. / ((epi / 200) + 1)
+            print("\n################### {0}-th....   e:{1:03.2f} ########################".format(epi, e))
+
+            sim = Simulation(1)  # slot/hour == 1
+            ev = sim.sim_init(price_data[day])
+
             tot_reward = 0
             tot_cost = 0
             done = 0
-            step_count = 0
-            ev = sim.sim_init( np.random.randint(0, 7) )
-            # ev = sim.sim_init(0)
-            # slot number, soc, at, dt, curr load, load state
-            ts = ev.TS_Arrive
-            soc = ev.SoC*100
-            curload = sim.baseload[ts] + sim.charging_load_list_grid[ts] + sim.discharging_load_list_grid[ts]
-            # loadstate = sim.sim_get_peak_price_at_ts(ts)
-            loadstate = sim.sim_get_load_state(ts)
-            # state = np.array([ts, soc, ev.TS_Arrive, ev.TS_Depart, curload, loadstate])
-            remainTS = ev.TS_Depart - ts
-            state = np.array([ts, soc, remainTS, curload, loadstate])
 
-            print("\nEpisode: {0} e:{1:06.4f} ".format(episode, e))
-            print("Start {} - End {}".format(ev.TS_Arrive, ev.TS_Depart))
-            # print("State: ", state)
+            ts = ev.TS_Arrive
+            past_24_price_data = train_set[(day - 1) * 24 + ts:day * 24 + ts]
+            past_24_price_data = np.reshape(past_24_price_data, [1, -1])
+
+            soc = ev.SoC
+            remainTS = ev.TS_Depart - ts
+            state = np.array([soc, remainTS])
+            state = np.reshape(state, [1, -1])
+            state = np.concatenate((state, past_24_price_data), axis=1)
 
             while done == 0:
                 # print("State: ", state)
@@ -121,35 +172,42 @@ def main():
                 else:
                     action = np.argmax(Qpre)
 
-                next_state, ts, reward, done, cost, amount = sim.sim_step(action, ev, ts)
+                # print('Origin Action: ', action)
+                nextstate, next_ts, reward, done, cost, amount, action = sim.sim_step_LSTM(action, ev, ts)
+                nextstate = np.reshape(nextstate, [1, -1])
                 tot_cost += cost
-
-                # print('TS: {0}, Action: {1}, Reward: {2:9.2f}, SoC: {3:05.4f}, loadstate: {4} cur bat: {5:05.4f}'.format(ts, action, reward, ev.SoC, loadstate, ev.cur_bat_power))
+                past_24_price_data = train_set[(day - 1) * 24 + next_ts:day * 24 + next_ts]
+                past_24_price_data = np.reshape(past_24_price_data, [1, -1])
+                nextstate = np.concatenate((nextstate, past_24_price_data), axis=1)
+                # print('Adjust Action: ', action)
+                print(action, end=', ')
 
                 if done == 1:
-                    reward += tot_cost
-                elif done == -1:
-                    reward = -5000
-                elif done == -2:
-                    reward = -5000
+                    reward = cost - 150*(ev.battery_capa - ev.cur_bat_power)
+                else:
+                    reward = cost
+
 
                 tot_reward += reward
-                replay_buffer.append((state, action, reward, next_state))
-                state = next_state
+                replay_buffer.append((state, action, reward, nextstate))
+                state = nextstate
+                ts = next_ts
 
                 if len(replay_buffer) > BATCH_SIZE:
                     minibatch = random.sample(replay_buffer, BATCH_SIZE)
                     loss, _ = replay_train(mainDQN, targetDQN, minibatch)
 
-            if episode % TARGET_UPDATE_FREQUENCY == 0:
-                sess.run(copy_ops)
+                if step % 100 == 0:
+                    sess.run(copy_ops)
+                step += 1
             tot_reward_history.append(tot_reward)
             tot_cost_history.append(tot_cost)
             tot_soc_history.append(ev.SoC)
             tot_diff_soc_history.append(ev.SoC - ev.init_SoC)
 
-            print('Tot Reward: {0:9.2f}'.format(tot_reward))
+            print('\nTot Reward: {0:9.2f}'.format(tot_reward))
             print('initial SoC: {0:05.4f}, final SoC: {1:05.4f}'.format(ev.init_SoC, ev.SoC))
+            print('BT: {0:05.2f}, current BT: {1:05.2f}'.format(ev.battery_capa,ev.cur_bat_power))
             print('Cost: {0:06.2f}'.format(tot_cost))
             print('Charing: {0:06.2f}, Discharing: {1:06.2f}'.format(np.sum(sim.charging_load_list_grid), np.sum(sim.discharging_load_list_ev)))
 
@@ -178,177 +236,128 @@ def main():
         plt.clf()
 
 
+##########################################################################################################
 
-        #################################################################################################################
+        for test in range(1, test_day):
+        # for test in range(1, 3):
+            print("\n################### RL TEST {}-th....    ########################".format(test))
+            sim = Simulation(1)  # slot/hour == 1
+            ev = sim.sim_init(price_data[train_day+test])
 
-        tot_reward_history.clear()
-        tot_cost_history.clear()
-        tot_soc_history.clear()
-        tot_diff_soc_history.clear()
+            tot_reward = 0
+            tot_cost = 0
+            done = 0
 
-        tot_reward = 0
-        tot_cost = 0
-        done = 0
-        ev = sim.sim_init(0)
-        ts = ev.TS_Arrive
-        soc = ev.SoC*100
+            ts = ev.TS_Arrive
+            past_24_price_data = test_set[(test-1) * 24 + ts:test * 24 + ts]
+            past_24_price_data = np.reshape(past_24_price_data, [1, -1])
 
-        curload = sim.baseload[ts] + sim.charging_load_list_grid[ts] + sim.discharging_load_list_grid[ts]
-        loadstate = sim.sim_get_load_state(ts)
-        remainTS = ev.TS_Depart - ts
-        state = np.array([ts, soc, remainTS, curload, loadstate])
+            soc = ev.SoC
+            remainTS = ev.TS_Depart - ts
+            state = np.array([soc, remainTS])
+            state = np.reshape(state, [1, -1])
+            state = np.concatenate((state, past_24_price_data), axis=1)
 
-        while done == 0:
-            Qpre = mainDQN.predict(state)
-            action = np.argmax(Qpre)
-            state, ts, reward, done, cost, amount= sim.sim_step(action, ev, ts)
-            tot_cost += cost
-
-            if done == 1:
-                reward += tot_cost
-            elif done == -1:
-                reward = -5000
-            elif done == -2:
-                reward = -5000
-            tot_reward += reward
-
-        tot_reward_history.append(tot_reward)
-        tot_cost_history.append(tot_cost)
-        tot_soc_history.append(ev.SoC)
-        tot_diff_soc_history.append(ev.SoC - ev.init_SoC)
-        print('Tot Reward: {0:9.2f}'.format(tot_reward))
-        print('initial SoC: {0:05.4f}, final SoC: {1:05.4f}'.format(ev.init_SoC, ev.SoC))
-        print('Cost: {0:06.2f}'.format(tot_cost))
-        print('Charing: {0:06.2f}, Discharing: {1:06.2f}'.format(np.sum(sim.charging_load_list_grid), np.sum(sim.discharging_load_list_ev)))
-
-        plt.title('1 EV')
-        plt.plot(sim.baseload)
-        plt.plot(sim.charging_load_list_grid)
-        plt.plot(sim.discharging_load_list_grid)
-        plt.plot(sim.baseload + sim.charging_load_list_grid + sim.discharging_load_list_grid)
-        plt.show()
+            while done == 0:
+                print("State: ", state)
+                Qpre = mainDQN.predict(state)
 
 
-        period = 1
-        for day in range(period):
-            sim.sim_init_test(day)
-            tot_soc_history.clear()
-            tot_cost_history.clear()
+                action = np.argmax(Qpre)
 
-            print('day', day)
+                print('Origin Action: ', action)
+                nextstate, next_ts, reward, done, cost, amount, action = sim.sim_step_LSTM(action, ev, ts)
+                nextstate = np.reshape(nextstate, [1, -1])
+                tot_cost += cost
+                past_24_price_data = test_set[(test-1) * 24 + next_ts:test * 24 + next_ts]
+                past_24_price_data = np.reshape(past_24_price_data, [1, -1])
+                nextstate = np.concatenate((nextstate, past_24_price_data), axis=1)
+                print('Adjust Action: ', action)
 
-            for ts in range(96):
-                print('##################################################  ts : ', ts)
-                sim.sim_check_EVs(ts)
+                if done == 1:
+                    reward = cost - pow(ev.battery_capa - ev.cur_bat_power, 2)*200
+                else:
+                    reward = cost
 
-                e = 0
-                print('Entry: ', len(sim.entry_EV))
-                print('Stay: ', len(sim.entry_EV_Stay))
-                print('Depart: ', len(sim.entry_EV_Depart))
 
-                while e < len(sim.entry_EV_Stay):
-                    ev = sim.entry_EV_Stay[e]
-                    action = np.random.randint(0, 3)
-                    _, _, reward, done, cost, amount = sim.sim_step(action, ev, ts)
+                tot_reward += reward
+                state = nextstate
+                ts = next_ts
 
-                    sim.sim_depart_check_EVs(ev, ts, done)
-                    if done == 0:
-                        e += 1
-                    else:
-                        tot_soc_history.append(ev.SoC)
-                        tot_cost_history.append(ev.tot_cost)
+            print('Tot Reward: {0:9.2f}'.format(tot_reward))
+            print('initial SoC: {0:05.4f}, final SoC: {1:05.4f}'.format(ev.init_SoC, ev.SoC))
+            print('Cost: {0:06.2f}'.format(tot_cost))
+            print('Charing: {0:06.2f}, Discharing: {1:06.2f}'.format(np.sum(sim.charging_load_list_grid),
+                                                                     np.sum(sim.discharging_load_list_ev)))
+            if test % 10 == 0:
+                B_line, = plt.plot(sim.today_basecost)
+                C_line, = plt.plot(sim.charging_load_list_grid)
+                D_line, = plt.plot(sim.discharging_load_list_ev)
+                plt.legend(handles=(B_line, C_line, D_line), labels=('Price', 'Charging', 'Discharging'))
+                plt.show(block=False)
+                fig = plt.gcf()
+                fig.savefig('result/Random_test_day_{}.png'.format(test), dpi=fig.dpi)
+                plt.clf()
 
-            plt.title('Random')
-            plt.plot(sim.baseload)
-            plt.plot(sim.charging_load_list_grid)
-            plt.plot(sim.discharging_load_list_grid)
-            plt.plot(sim.baseload + sim.charging_load_list_grid + sim.discharging_load_list_grid)
-            plt.show()
+        for test in range(1, test_day):
+        # for test in range(1, 3):
 
-            plt.bar(range(len(tot_soc_history)), tot_soc_history)
-            plt.show()
+            print("\n################### Random TEST {}-th....    ########################".format(test))
+            sim = Simulation(1)  # slot/hour == 1
+            ev = sim.sim_init(price_data[train_day+test])
 
-        for day in range(period):
-            sim.sim_init_test(day)
-            tot_soc_history.clear()
-            tot_cost_history.clear()
-            print('day', day)
-            for ts in range(96):
-                print('##################################################  ts : ', ts)
-                sim.sim_check_EVs(ts)
+            tot_reward = 0
+            tot_cost = 0
+            done = 0
 
-                e = 0
-                print('Entry: ', len(sim.entry_EV))
-                print('Stay: ', len(sim.entry_EV_Stay))
-                print('Depart: ', len(sim.entry_EV_Depart))
-                while e < len(sim.entry_EV_Stay):
-                    ev = sim.entry_EV_Stay[e]
-                    soc = ev.SoC
-                    curload = sim.baseload[ts]+sim.charging_load_list_grid[ts]+sim.discharging_load_list_grid[ts]
-                    loadstate = sim.sim_get_load_state(ts)
-                    state = np.array([ts, soc, ev.TS_Depart-ts, curload, loadstate])
+            ts = ev.TS_Arrive
+            past_24_price_data = test_set[(test-1) * 24 + ts:test * 24 + ts]
+            past_24_price_data = np.reshape(past_24_price_data, [1, -1])
 
-                    Qpre = mainDQN.predict(state)
-                    action = np.argmax(Qpre)
-                    _, _, _, done, cost, amount = sim.sim_step(action, ev, ts)
+            soc = ev.SoC
+            remainTS = ev.TS_Depart - ts
+            state = np.array([soc, remainTS])
+            state = np.reshape(state, [1, -1])
+            state = np.concatenate((state, past_24_price_data), axis=1)
 
-                    sim.sim_depart_check_EVs(ev, ts, done)
-                    if done == 0:
-                        e += 1
-                    else:
-                        tot_soc_history.append(ev.SoC)
-                        tot_cost_history.append(ev.tot_cost)
+            while done == 0:
+                print("State: ", state)
+                Qpre = mainDQN.predict(state)
 
-            plt.title('Reinforcement')
-            plt.plot(sim.baseload)
-            plt.plot(sim.charging_load_list_grid)
-            plt.plot(sim.discharging_load_list_grid)
-            plt.plot(sim.baseload + sim.charging_load_list_grid + sim.discharging_load_list_grid)
-            plt.show()
 
-            plt.bar(range(len(tot_soc_history)), tot_soc_history)
-            plt.show()
+                action = np.random.randint(0, 3)
 
-#######################################################################################################################
+                print('action: ', action)
+                nextstate, next_ts, reward, done, cost, amount, action = sim.sim_step_LSTM(action, ev, ts)
+                nextstate = np.reshape(nextstate, [1, -1])
+                tot_cost += cost
+                past_24_price_data = train_set[(test - 1) * 24 + next_ts:test * 24 + next_ts]
+                past_24_price_data = np.reshape(past_24_price_data, [1, -1])
+                nextstate = np.concatenate((nextstate, past_24_price_data), axis=1)
 
-        for day in range(period):
-            sim.sim_init_test(day)
-            tot_soc_history.clear()
-            tot_cost_history.clear()
+                if done == 1:
+                    reward = cost - pow(ev.battery_capa - ev.cur_bat_power, 2)*200
+                else:
+                    reward = cost
 
-            print('day', day)
-            for ts in range(96):
-                print('##################################################  ts : ', ts)
-                sim.sim_check_EVs(ts)
+                tot_reward += reward
+                state = nextstate
+                ts = next_ts
 
-                e = 0
-                print('Entry: ', len(sim.entry_EV))
-                print('Stay: ', len(sim.entry_EV_Stay))
-                print('Depart: ', len(sim.entry_EV_Depart))
-                while e < len(sim.entry_EV_Stay):
-                    ev = sim.entry_EV_Stay[e]
-                    soc = ev.SoC
-                    curload = sim.baseload[ts] + sim.charging_load_list_grid[ts] + sim.discharging_load_list_grid[ts]
-                    loadstate = sim.sim_get_load_state(ts)
-                    action = 0
-                    _, _, _, done, cost, amount = sim.sim_step(action, ev, ts)
-
-                    sim.sim_depart_check_EVs(ev, ts, done)
-                    if done == 0:
-                        e += 1
-                    else:
-                        tot_soc_history.append(ev.SoC)
-                        tot_cost_history.append(ev.tot_cost)
-
-            plt.title('Just Charging')
-            plt.plot(sim.baseload)
-            plt.plot(sim.charging_load_list_grid)
-            plt.plot(sim.discharging_load_list_grid)
-            plt.plot(sim.baseload + sim.charging_load_list_grid + sim.discharging_load_list_grid)
-            plt.show()
-
-            plt.bar(range(len(tot_soc_history)), tot_soc_history)
-            plt.show()
+            print('Tot Reward: {0:9.2f}'.format(tot_reward))
+            print('initial SoC: {0:05.4f}, final SoC: {1:05.4f}'.format(ev.init_SoC, ev.SoC))
+            print('Cost: {0:06.2f}'.format(tot_cost))
+            print('Charing: {0:06.2f}, Discharing: {1:06.2f}'.format(np.sum(sim.charging_load_list_grid),
+                                                                     np.sum(sim.discharging_load_list_ev)))
+            if test % 10 == 0:
+                B_line, = plt.plot(sim.today_basecost)
+                C_line, = plt.plot(sim.charging_load_list_grid)
+                D_line, = plt.plot(sim.discharging_load_list_ev)
+                plt.legend(handles=(B_line, C_line, D_line), labels=('Price','Charging', 'Discharging'))
+                plt.show(block=False)
+                fig = plt.gcf()
+                fig.savefig('result/Random_test_day_{}.png'.format(test), dpi=fig.dpi)
+                plt.clf()
 
 if __name__ == "__main__":
     main()
