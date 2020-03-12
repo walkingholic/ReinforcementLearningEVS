@@ -186,6 +186,7 @@ def main():
                     reward = cost - 150*(ev.battery_capa - ev.cur_bat_power)
                 else:
                     reward = cost
+                #todo make
 
 
                 tot_reward += reward
@@ -275,7 +276,7 @@ def main():
                 print('Adjust Action: ', action)
 
                 if done == 1:
-                    reward = cost - pow(ev.battery_capa - ev.cur_bat_power, 2)*200
+                    reward = cost - 150*(ev.battery_capa - ev.cur_bat_power)
                 else:
                     reward = cost
 
@@ -336,7 +337,7 @@ def main():
                 nextstate = np.concatenate((nextstate, past_24_price_data), axis=1)
 
                 if done == 1:
-                    reward = cost - pow(ev.battery_capa - ev.cur_bat_power, 2)*200
+                    reward = cost - 150*(ev.battery_capa - ev.cur_bat_power)
                 else:
                     reward = cost
 
