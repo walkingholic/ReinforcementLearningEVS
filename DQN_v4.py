@@ -28,7 +28,7 @@ DISCOUNT_RATE = 0.99
 REPLAY_MEMORY = 50000
 BATCH_SIZE = 80
 TARGET_UPDATE_FREQUENCY = 1
-MAX_EPISODES = 20000
+MAX_EPISODES = 5000
 
 
 
@@ -104,16 +104,25 @@ def main():
     tot_soc_history = []
     tot_diff_soc_history = []
 
-    pdata = np.loadtxt("data/smp_data.csv", delimiter=',', dtype=str)
-    pdata = pdata[:, 1:]
-    pdata = pdata[::-1]
-    pdata = pdata.astype(np.float32)
 
-    price_data = pdata[:, :-3]
+
+    price_data = np.empty(0).reshape(-1, 24)
+    for i in range(6):
+        fname = 'data/elspot-prices_{}_hourly_eur.csv'.format(2014 + i)
+        xy = np.loadtxt(fname, delimiter=',', dtype=str)
+        # print(xy)
+        data = xy[:, -1]
+        # print(data)
+
+        data = data.astype('float32')
+        data = data/1000
+        print(data)
+        print(np.shape(data))
+        price_data = np.vstack([price_data, data.reshape(-1, 24)])
+        print(np.shape(price_data))
 
 
     data_set = price_data.reshape(-1, 1)
-
 
     train_day = int(len(data_set)/24 * 0.8)
     train_size = train_day*24
@@ -127,8 +136,6 @@ def main():
     train_set = MinMaxScaler(train_set)
     test_set = MinMaxScaler(test_set)
 
-    # print(price_data[train_day])
-    # print(test_set[0:24])
 
     with tf.Session() as sess:
 
@@ -139,8 +146,10 @@ def main():
         copy_ops = get_copy_var_ops(dest_scope_name="target", src_scope_name="main")
         sess.run(copy_ops)
         step = 0
+
+
         for epi in range(1, MAX_EPISODES):
-        # for episode in range(1, 2):
+        # for epi in range(1, 2):
             day = np.random.randint(1, train_day)
 
             e = 1. / ((epi / 200) + 1)
@@ -174,7 +183,7 @@ def main():
 
                 # print('Origin Action: ', action)
                 nextstate, next_ts, reward, done, cost, amount, action = sim.sim_step_LSTM(action, ev, ts)
-                nextstate = np.reshape(nextstate, [1, -1])
+                # nextstate = np.reshape(nextstate, [1, -1])
                 tot_cost += cost
                 past_24_price_data = train_set[(day - 1) * 24 + next_ts:day * 24 + next_ts]
                 past_24_price_data = np.reshape(past_24_price_data, [1, -1])
@@ -183,7 +192,7 @@ def main():
                 print(action, end=', ')
 
                 if done == 1:
-                    reward = cost - 150*(ev.battery_capa - ev.cur_bat_power)
+                    reward = cost - 0.01*pow((ev.battery_capa - ev.cur_bat_power),2)
                 else:
                     reward = cost
                 #todo make
@@ -238,9 +247,9 @@ def main():
 
 
 ##########################################################################################################
-
-        for test in range(1, test_day):
-        # for test in range(1, 3):
+        #RL
+        # for test in range(1, test_day):
+        for test in range(1, 3):
             print("\n################### RL TEST {}-th....    ########################".format(test))
             sim = Simulation(1)  # slot/hour == 1
             ev = sim.sim_init(price_data[train_day+test])
@@ -276,7 +285,7 @@ def main():
                 print('Adjust Action: ', action)
 
                 if done == 1:
-                    reward = cost - 150*(ev.battery_capa - ev.cur_bat_power)
+                    reward = cost - 0.1 * (ev.battery_capa - ev.cur_bat_power)
                 else:
                     reward = cost
 
@@ -290,18 +299,24 @@ def main():
             print('Cost: {0:06.2f}'.format(tot_cost))
             print('Charing: {0:06.2f}, Discharing: {1:06.2f}'.format(np.sum(sim.charging_load_list_grid),
                                                                      np.sum(sim.discharging_load_list_ev)))
-            if test % 10 == 0:
-                B_line, = plt.plot(sim.today_basecost)
-                C_line, = plt.plot(sim.charging_load_list_grid)
-                D_line, = plt.plot(sim.discharging_load_list_ev)
+            if test % 100 == 0:
+                fig, ax1 = plt.subplots()
+                ax2 = ax1.twinx()
+
+                B_line, = ax2.plot(sim.today_basecost, color='g')
+                C_line, = ax1.plot(sim.charging_load_list_grid, color='b')
+                D_line, = ax1.plot(sim.discharging_load_list_ev, color='r')
                 plt.legend(handles=(B_line, C_line, D_line), labels=('Price', 'Charging', 'Discharging'))
+                fig.tight_layout()
                 plt.show(block=False)
-                fig = plt.gcf()
+
+
                 fig.savefig('result/Random_test_day_{}.png'.format(test), dpi=fig.dpi)
                 plt.clf()
 
-        for test in range(1, test_day):
-        # for test in range(1, 3):
+        #Random
+        # for test in range(1, test_day):
+        for test in range(1, 3):
 
             print("\n################### Random TEST {}-th....    ########################".format(test))
             sim = Simulation(1)  # slot/hour == 1
@@ -337,7 +352,7 @@ def main():
                 nextstate = np.concatenate((nextstate, past_24_price_data), axis=1)
 
                 if done == 1:
-                    reward = cost - 150*(ev.battery_capa - ev.cur_bat_power)
+                    reward = cost - 0.1 * (ev.battery_capa - ev.cur_bat_power)
                 else:
                     reward = cost
 
@@ -350,15 +365,83 @@ def main():
             print('Cost: {0:06.2f}'.format(tot_cost))
             print('Charing: {0:06.2f}, Discharing: {1:06.2f}'.format(np.sum(sim.charging_load_list_grid),
                                                                      np.sum(sim.discharging_load_list_ev)))
-            if test % 10 == 0:
-                B_line, = plt.plot(sim.today_basecost)
-                C_line, = plt.plot(sim.charging_load_list_grid)
-                D_line, = plt.plot(sim.discharging_load_list_ev)
-                plt.legend(handles=(B_line, C_line, D_line), labels=('Price','Charging', 'Discharging'))
+            if test % 100 == 0:
+                fig,ax1 = plt.subplots()
+                ax2 = ax1.twinx()
+
+                B_line, = ax2.plot(sim.today_basecost, color='g')
+                C_line, = ax1.plot(sim.charging_load_list_grid, color='b')
+                D_line, = ax1.plot(sim.discharging_load_list_ev, color='r')
+                plt.legend(handles=(B_line, C_line, D_line), labels=('Price', 'Charging', 'Discharging'))
+                fig.tight_layout()
                 plt.show(block=False)
-                fig = plt.gcf()
+
+
                 fig.savefig('result/Random_test_day_{}.png'.format(test), dpi=fig.dpi)
                 plt.clf()
+
+
+
+
+        #100EVs
+        for test in range(1, 20):
+            print("\n################### 100 EVs TEST {}-th....    ########################".format(test))
+            sim = Simulation(1)  # slot/hour == 1
+            ev_entry = sim.sim_init_test100(price_data[train_day+test])
+
+            for evi in range(0, 100):
+                ev = ev_entry[evi]
+                done = 0
+                reward = 0
+                tot_reward = 0
+                tot_cost = 0
+
+                ts = ev.TS_Arrive
+                past_24_price_data = test_set[(test-1) * 24 + ts:test * 24 + ts]
+                past_24_price_data = np.reshape(past_24_price_data, [1, -1])
+
+                soc = ev.SoC
+                remainTS = ev.TS_Depart - ts
+                state = np.array([soc, remainTS])
+                state = np.reshape(state, [1, -1])
+                state = np.concatenate((state, past_24_price_data), axis=1)
+
+                while done == 0:
+                    print("State: ", state)
+                    Qpre = mainDQN.predict(state)
+                    action = np.argmax(Qpre)
+                    # action = np.random.randint(0, 3)
+
+                    print('action: ', action)
+                    nextstate, next_ts, reward, done, cost, amount, action = sim.sim_step_LSTM(action, ev, ts)
+                    nextstate = np.reshape(nextstate, [1, -1])
+                    tot_cost += cost
+                    past_24_price_data = train_set[(test - 1) * 24 + next_ts:test * 24 + next_ts]
+                    past_24_price_data = np.reshape(past_24_price_data, [1, -1])
+                    nextstate = np.concatenate((nextstate, past_24_price_data), axis=1)
+
+                    if done == 1:
+                        reward = cost - 0.1 * (ev.battery_capa - ev.cur_bat_power)
+                    else:
+                        reward = cost
+
+                    tot_reward += reward
+                    state = nextstate
+                    ts = next_ts
+
+
+            fig,ax1 = plt.subplots()
+            ax2 = ax1.twinx()
+            B_line, = ax2.plot(sim.today_basecost, color='g')
+            C_line, = ax1.plot(sim.charging_load_list_grid, color='b', linestyle='--', marker='o')
+            D_line, = ax1.plot(sim.discharging_load_list_ev, color='r', linestyle='--', marker='^')
+            T_line, = ax1.plot(sim.charging_load_list_grid+sim.discharging_load_list_ev, color='black', linestyle='--', marker='s')
+            plt.legend(handles=(B_line, C_line, D_line, T_line), labels=('Price', 'Charging', 'Discharging'))
+            fig.tight_layout()
+            plt.show(block=False)
+            fig.savefig('result/100_test_day_{}.png'.format(test), dpi=fig.dpi)
+            plt.clf()
+
 
 if __name__ == "__main__":
     main()

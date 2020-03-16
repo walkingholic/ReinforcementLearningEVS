@@ -46,26 +46,7 @@ class Simulation:
         self.discharging_load_list_grid = np.zeros(self.num_TimeSlot)
         self.baseload = np.zeros(self.num_TimeSlot)
         self.today_basecost = np.zeros(self.num_TimeSlot)
-        # 도착하자마자 전체 스케줄링하는 것... 스캐줄링의 단점은 베이스로드가 예측값이라는 것.
-        #
-        # in_filename = 'data/baseload.txt'
-        # fi = open(in_filename, 'r')
-        # lines  = fi.readlines()
-        # baseload = []
-        # tmp = []
-        #
-        # for line in lines:
-        #     tmp.clear()
-        #     items = line.split('\t')
-        #     for item in items:
-        #         tmp.append(float(item))
-        #     baseload.append(copy.deepcopy(tmp))
-        # self.np_baseload = np.array(baseload)
 
-        # print(self.np_baseload[1] )
-        # print("minmax")
-        # self.np_baseload[1] = MinMaxScaler(self.np_baseload)
-        # print(self.np_baseload[1])
 
     def sim_init(self, pricedata):
         self.entry_EV.clear()
